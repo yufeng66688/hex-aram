@@ -7,6 +7,9 @@
 - 单机可玩：玩家 + 4 名 AI 队友 vs 5 名 AI 对手，三档难度
 - 部署：GitHub Pages（`hex-aram/` 目录直接发布）
 
+![开始界面](screenshots/start.png)
+![对局画面](screenshots/game.png)
+
 ## 玩法
 
 | 系统 | 说明 |
