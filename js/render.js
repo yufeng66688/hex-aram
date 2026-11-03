@@ -157,6 +157,7 @@ export class Renderer {
     this.drawEffects(ctx, game);
     this.drawParticles(ctx);
     this.drawFloaters(ctx, game);
+    this.drawAbilityRange(ctx, game, player);
     this.drawCursor(ctx, game, player, mouse);
     ctx.restore();
 
@@ -1010,6 +1011,26 @@ export class Renderer {
       ctx.fillText(f.text, f.x, f.y);
     }
     ctx.globalAlpha = 1;
+  }
+
+  drawAbilityRange(ctx, game, player) {
+    const slot = window.__aram && window.__aram.ui && window.__aram.ui.hoverSlot;
+    if (slot == null || slot < 0 || !player || !player.alive) return;
+    const ab = player.def.abilities[slot];
+    if (!ab) return;
+    const rank = player.abilityRank(slot);
+    if (rank <= 0) return;
+    const r = ab.range || ab.radius || 500;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(140,240,255,.35)';
+    ctx.setLineDash([10, 8]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(player.x, player.y, r, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    if (ab.radius) {
+      ctx.strokeStyle = 'rgba(140,240,255,.18)';
+      ctx.beginPath(); ctx.arc(player.x, player.y, ab.radius, 0, 7); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawCursor(ctx, game, player, mouse) {

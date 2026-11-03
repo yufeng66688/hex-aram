@@ -7,7 +7,7 @@ import { BotAI } from './ai.js';
 import { Renderer } from './render.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
-import { LAYOUT } from './map.js';
+import { LAYOUT, buildBackground } from './map.js';
 
 const canvas = document.getElementById('game');
 const audio = new Audio();
@@ -401,6 +401,25 @@ function frame(now) {
 }
 
 /* ---------- 启动 ---------- */
+function paintStartBackdrop() {
+  try {
+    const bg = buildBackground();
+    const c = document.createElement('canvas');
+    c.width = 1600; c.height = 640;
+    const g = c.getContext('2d');
+    g.drawImage(bg, 1400, 120, 3200, 700, 0, 0, 1600, 640);
+    g.fillStyle = 'rgba(3,8,10,.55)'; g.fillRect(0, 0, 1600, 640);
+    const el = document.querySelector('.start-bg');
+    if (el) {
+      el.style.backgroundImage = `url(${c.toDataURL('image/jpeg', 0.72)})`;
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+      el.style.animation = 'none';
+      el.style.opacity = '.85';
+    }
+  } catch (e) {}
+}
+paintStartBackdrop();
 rollThree();
 showStart();
 ui.hideLoading();

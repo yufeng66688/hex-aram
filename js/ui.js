@@ -19,9 +19,52 @@ function paintPortrait(canvas, def, team = 'blue') {
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
 
-  // 阵营底带
+  // 阵营底带 + 英雄色调
   ctx.fillStyle = team === 'blue' ? 'rgba(58,160,255,.18)' : 'rgba(255,77,94,.18)';
   ctx.fillRect(0, 0, w, h * .22);
+  ctx.globalAlpha = .28;
+  ctx.fillStyle = pal.body;
+  ctx.fillRect(0, h * .72, w, h * .28);
+  ctx.globalAlpha = 1;
+  const id = def.id;
+  ctx.save();
+  ctx.translate(w / 2, h * .52);
+  if (id === 'ashe') {
+    ctx.fillStyle = pal.trim;
+    ctx.beginPath(); ctx.moveTo(-20, 6); ctx.lineTo(0, -22); ctx.lineTo(20, 6); ctx.closePath(); ctx.fill();
+  } else if (id === 'ziggs') {
+    ctx.fillStyle = 'rgba(40,40,40,.9)';
+    ctx.beginPath(); ctx.arc(0, -8, 17, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath(); ctx.arc(6, -4, 6, 0, 7); ctx.fill();
+  } else if (id === 'lux') {
+    ctx.strokeStyle = 'rgba(255,236,160,.9)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, -14, 18, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  } else if (id === 'jax') {
+    ctx.fillStyle = '#6a5a3a';
+    ctx.beginPath(); ctx.ellipse(0, -16, 22, 6, 0, 0, 7); ctx.fill();
+  } else if (id === 'alistar') {
+    ctx.strokeStyle = '#e8d9c0'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(-12, -8); ctx.quadraticCurveTo(-30, -26, -22, -36); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, -8); ctx.quadraticCurveTo(30, -26, 22, -36); ctx.stroke();
+  } else if (id === 'yasuo') {
+    ctx.fillStyle = '#1f1f1f';
+    ctx.beginPath(); ctx.arc(0, -18, 10, 0, 7); ctx.fill();
+  } else if (id === 'ahri') {
+    ctx.fillStyle = pal.hair;
+    ctx.beginPath(); ctx.moveTo(-14, -10); ctx.lineTo(-20, -34); ctx.lineTo(-6, -16); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(14, -10); ctx.lineTo(20, -34); ctx.lineTo(6, -16); ctx.closePath(); ctx.fill();
+  } else if (id === 'sion') {
+    ctx.fillStyle = '#4a5a4a';
+    ctx.beginPath(); ctx.moveTo(-20, 6); ctx.lineTo(-13, -22); ctx.lineTo(13, -22); ctx.lineTo(20, 6); ctx.closePath(); ctx.fill();
+  } else if (id === 'sona') {
+    ctx.strokeStyle = 'rgba(160,230,255,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -10, 22, 0, 7); ctx.stroke();
+  } else if (id === 'wukong') {
+    ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, -14, 18, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  }
+  ctx.restore();
   ctx.save();
   ctx.translate(w / 2, h * .82);
   const s = w / 108;
@@ -46,11 +89,37 @@ function paintPortrait(canvas, def, team = 'blue') {
   ctx.fillStyle = 'rgba(20,30,36,.9)';
   ctx.beginPath(); ctx.ellipse(-8, -52, 3, 4, 0, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(8, -52, 3, 4, 0, 0, 7); ctx.fill();
-  // 武器
-  ctx.strokeStyle = '#cfdbe1'; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.moveTo(30, -8); ctx.lineTo(52, -70); ctx.stroke();
-  ctx.fillStyle = pal.body;
-  ctx.beginPath(); ctx.arc(54, -76, 8, 0, 7); ctx.fill();
+  // 武器 / 头饰
+  const wp = pal.weapon;
+  ctx.strokeStyle = '#cfdbe1'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+  if (wp === 'bow') {
+    ctx.beginPath(); ctx.arc(40, -34, 26, -1.15, 1.15); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(40, -60); ctx.lineTo(40, -8); ctx.stroke();
+  } else if (wp === 'staff' || wp === 'lamp' || wp === 'staff2') {
+    ctx.beginPath(); ctx.moveTo(30, -6); ctx.lineTo(54, -74); ctx.stroke();
+    ctx.fillStyle = wp === 'lamp' ? '#ffd27a' : pal.body;
+    ctx.beginPath(); ctx.arc(56, -80, 7, 0, 7); ctx.fill();
+  } else if (wp === 'katana' || wp === 'sword') {
+    ctx.beginPath(); ctx.moveTo(26, -18); ctx.lineTo(62, -74); ctx.stroke();
+  } else if (wp === 'axe') {
+    ctx.beginPath(); ctx.moveTo(30, -8); ctx.lineTo(50, -70); ctx.stroke();
+    ctx.fillStyle = '#c8d4da';
+    ctx.beginPath(); ctx.moveTo(44, -82); ctx.lineTo(66, -66); ctx.lineTo(48, -56); ctx.closePath(); ctx.fill();
+  } else if (wp === 'harp') {
+    ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(40, -34, 24, -1.3, .9); ctx.stroke();
+  } else if (wp === 'bomb') {
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath(); ctx.arc(46, -30, 9, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#8a5a10'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(46, -39); ctx.quadraticCurveTo(52, -50, 58, -46); ctx.stroke();
+  } else if (wp === 'fists') {
+    ctx.fillStyle = '#a8805e';
+    ctx.beginPath(); ctx.arc(34, -24, 9, 0, 7); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.moveTo(30, -8); ctx.lineTo(52, -70); ctx.stroke();
+  }
   ctx.restore();
 
   // 边框
@@ -226,7 +295,9 @@ export class UI {
       img.src = cv.toDataURL();
       btn.onmouseenter = (e) => this.showTip(e, player, i);
       btn.onmousemove = (e) => this.moveTip(e);
-      btn.onmouseleave = () => this.hideTip();
+      btn.onmouseleave = () => { this.hideTip(); this.hoverSlot = -1; };
+    const oldEnter = btn.onmouseenter;
+    btn.onmouseenter = (e) => { this.hoverSlot = i; oldEnter(e); };
     });
     // 召唤师技能
     const d = document.createElement('canvas'); d.width = 64; d.height = 64;
