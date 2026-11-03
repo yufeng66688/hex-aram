@@ -71,9 +71,9 @@ hex-aram/
 
 ## 部署
 
-`.github/workflows/pages.yml` 会把仓库根目录作为 Pages 站点发布：
+`.github/workflows/pages-hex-aram.yml` 会把 `hex-aram/` 作为 Pages 站点发布：
 
-`https://yufeng66688.github.io/hex-aram/`
+`https://yufeng66688.github.io/raa-arena/`
 
 ---
 

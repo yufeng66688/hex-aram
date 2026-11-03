@@ -158,6 +158,31 @@ export class UI {
 
   hideLoading() { this.el.loading.classList.add('hidden'); }
 
+  showTip(e, champ, slot) {
+    const tip = $('tip');
+    if (!tip) return;
+    const ab = champ.def.abilities[slot];
+    if (!ab) return;
+    const rank = champ.abilityRank(slot);
+    const cd = ab.cd[Math.min(Math.max(rank - 1, 0), ab.cd.length - 1)];
+    const cost = ab.cost[Math.min(Math.max(rank - 1, 0), ab.cost.length - 1)];
+    tip.innerHTML = `<div class="tname">${ab.name}${rank <= 0 ? '（未解锁）' : ''}</div>
+      <div class="tmeta">${rank > 0 ? `等级 ${rank} · 冷却 ${cd}s · 消耗 ${cost}` : '6 级解锁'}</div>
+      <div class="tdesc">${ab.desc}</div>`;
+    tip.classList.remove('hidden');
+    this.moveTip(e);
+  }
+  moveTip(e) {
+    const tip = $('tip');
+    if (!tip || tip.classList.contains('hidden')) return;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + 14, y = e.clientY - h - 14;
+    if (x + w > window.innerWidth - 10) x = e.clientX - w - 14;
+    if (y < 10) y = e.clientY + 18;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  hideTip() { const tip = $('tip'); if (tip) tip.classList.add('hidden'); }
+
   /* ---------- 开始界面 ---------- */
   showStart(rolls, selectedIdx, rerolls, diff, onPick) {
     this.el.start.classList.remove('hidden');
@@ -199,7 +224,9 @@ export class UI {
       paintAbility(cv, ab, player.def, i);
       const img = btn.querySelector('img');
       img.src = cv.toDataURL();
-      btn.title = `${ab.name} — ${ab.desc}`;
+      btn.onmouseenter = (e) => this.showTip(e, player, i);
+      btn.onmousemove = (e) => this.moveTip(e);
+      btn.onmouseleave = () => this.hideTip();
     });
     // 召唤师技能
     const d = document.createElement('canvas'); d.width = 64; d.height = 64;
@@ -342,6 +369,9 @@ export class UI {
 
     // buff 条
     const buffs = player.buffs.filter(b => b.t > 0.2).slice(0, 8);
+    if (player.snowball && player.snowball.target) {
+      buffs.unshift({ id: 'snow', label: '雪球突进', t: 1, snow: true });
+    }
     if (buffs.length !== this.el.buffbar.children.length) {
       this.el.buffbar.innerHTML = '';
       for (const b of buffs) {
@@ -382,7 +412,11 @@ export class UI {
   openShop() {
     const p = this.game.player;
     if (!p) return;
-    if (p.alive) { this.announce('阵亡后才能购物'); return; }
+    if (p.alive) {
+      const f = { blue: { x: 214, y: 500 }, red: { x: 5786, y: 500 } }[p.team];
+      const near = Math.hypot(p.x - f.x, p.y - f.y) < 560;
+      if (!near) { this.announce('阵亡或回到泉水后才能购物'); return; }
+    }
     this.shopOpen = true;
     this.el.shop.classList.remove('hidden');
     this.renderShop();

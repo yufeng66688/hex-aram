@@ -367,3 +367,13 @@ canvas{display:block}
 .aug-card.silver{box-shadow:inset 0 0 40px rgba(180,210,220,.05)}
 .aug-card.gold{box-shadow:inset 0 0 46px rgba(200,169,106,.10)}
 .aug-card.prismatic{box-shadow:inset 0 0 54px rgba(180,110,255,.16)}
+
+
+/* ---------- 技能悬浮提示 ---------- */
+.tip{position:fixed;z-index:30;max-width:300px;padding:10px 12px;pointer-events:none;
+  background:rgba(6,14,17,.96);border:1px solid var(--line2);box-shadow:var(--shadow);
+  font-size:12px;line-height:1.6;color:var(--txt)}
+.tip .tname{font-size:14px;font-weight:800;color:var(--gold2);letter-spacing:.06em;margin-bottom:2px}
+.tip .tmeta{font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px}
+.tip .tdesc{color:#b8cdd4}
+.tip .tnow{color:var(--cyan2)}
