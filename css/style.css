@@ -377,3 +377,7 @@ canvas{display:block}
 .tip .tmeta{font-size:10px;color:var(--dim);letter-spacing:.08em;margin-bottom:6px}
 .tip .tdesc{color:#b8cdd4}
 .tip .tnow{color:var(--cyan2)}
+
+.rc-img{width:96px;height:96px;object-fit:cover;border:1px solid #1d3238;background:#060f12}
+.frame .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.sb-avatar{width:26px;height:26px;object-fit:cover;border:1px solid var(--line)}

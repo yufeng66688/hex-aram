@@ -17,6 +17,33 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 export function angleTo(ax, ay, bx, by) { return Math.atan2(by - ay, bx - ax); }
 export function angleDiff(a, b) { let d = ((b - a + Math.PI) % TAU) - Math.PI; return d < -Math.PI ? d + TAU : d; }
 
+export function statValue(champ, stat) {
+  const st = champ.stats || champ;
+  switch (stat) {
+    case 'ad': return st.ad || 0;
+    case 'bonusAd': return Math.max(0, (st.ad || 0) - (champ.def?.stats?.ad || 0));
+    case 'maxHp': return champ.maxHp || 0;
+    case 'bonusHp': return Math.max(0, (champ.maxHp || 0) - (champ.def?.stats?.hp || 0));
+    case 'armor': return st.armor || 0;
+    case 'mr': return st.mr || 0;
+    default: return st.ap || 0;
+  }
+}
+
+export function abilityAmount(champ, ab, rank, field = 'dmg') {
+  const arr = ab[field];
+  let v = 0;
+  if (Array.isArray(arr) && arr.length) v += arr[Math.min(rank - 1, arr.length - 1)] || 0;
+  else if (field === 'dmg') v += 0;
+  if (field === 'dmg' || field === 'shield' || field === 'heal') {
+    for (const r of ab.ratios || []) v += (r.coeff || 0) * statValue(champ, r.stat);
+    if (ab.ratio && !(ab.ratios || []).length) {
+      v += ab.ratio * statValue(champ, ab.ratioType === 'ad' ? 'ad' : ab.ratioType === 'maxHp' ? 'maxHp' : 'ap');
+    }
+  }
+  return v;
+}
+
 /* ------------------------------------------------------------ */
 class Unit {
   constructor(game, kind, team, x, y, r) {
@@ -365,7 +392,7 @@ export class Champion extends Unit {
     else if (this.moveTarget) this.doMove(dt);
 
     // 自动攻击附近的敌人（无指令时）
-    if (!this.attackTarget && !this.moveTarget) {
+    if (!this.noAuto && !this.attackTarget && !this.moveTarget) {
       const t = this.game.findAutoTarget(this);
       if (t) this.attackTarget = t;
     }
@@ -574,7 +601,7 @@ export class Projectile {
       hit: new Set(), cc: null, color: '#9fe0ff', kind: 'skillshot',
       target: null, speed: 900, onHit: null, onEnd: null,
       slowResist: false, source: null, width: 20, explode: 0, visual: 'orb',
-      returning: false, returnPhase: false, dead: false, homing: false,
+      returning: false, returnPhase: false, dead: false, homing: false, return3: false,
       trail: [], crit: false, ability: true,
     }, o);
     this.startX = this.x; this.startY = this.y;
@@ -615,12 +642,25 @@ export class Projectile {
         if (this.dead) return;
       }
     }
-    if (this.traveled > this.range) {
+    if (this.return3 && !this.returning && this.traveled > this.range) {
+      this.returning = true;
+      this.hit.clear();
+      const ow = this.owner;
+      const a = angleTo(this.x, this.y, ow.x, ow.y);
+      const sp = Math.hypot(this.vx, this.vy) || 1000;
+      this.vx = Math.cos(a) * sp; this.vy = Math.sin(a) * sp;
+      this.traveled = 0;
+      this.range = dist(this.x, this.y, ow.x, ow.y) + 60;
+      this.pierce = 99;
+      return;
+    }
+    if (this.returning && this.owner && dist(this.x, this.y, this.owner.x, this.owner.y) < 46) {
+      this.dead = true;
+      return;
+    }
+    if (!this.returning && this.traveled > this.range) {
       this.dead = true;
       if (this.explode) this.game.aoeDamage(this.owner, this.x, this.y, this.explode, this.dmg * 0.7, this.dmgType, { ability: true, fx: this.color });
-    }
-    if (this.returnPhase && this.traveled > this.range && !this.returning) {
-      // 阿狸 Q 返回
     }
   }
   applyHit(e) {
@@ -671,7 +711,8 @@ export class Game {
   fx(kind, data) { this.fxQueue.push({ kind, data, t: 0, life: data.life || 0.6 }); }
   float(x, y, text, color, size = 13) {
     if (text === '+0' || text === '0') return;
-    this.floaters.push({ x, y, text, color, size, t: 0, life: 0.72, vy: -52 });
+    if (this.floaters.length > 46) this.floaters.shift();
+    this.floaters.push({ x, y, text, color, size, t: 0, life: 0.55, vy: -48 });
   }
 
   buildBase() {
@@ -712,7 +753,7 @@ export class Game {
   start() { this.started = true; this.emit('start', {}); }
 
   hostiles(u) { return this.units.filter(e => e.alive && e.team !== u.team && e.kind !== 'nexus'); }
-  allies(u) { return this.units.filter(e => e.alive && e.team === u.team && e.kind === 'champion'); }
+  allies(u) { return this.units.filter(e => e.alive && e !== u && e.team === u.team && e.kind === 'champion'); }
 
   findAutoTarget(champ) {
     const reach = champ.stats.range + 60;
@@ -758,6 +799,11 @@ export class Game {
   championAttack(champ, target) {
     const s = champ.stats;
     let dmg = s.ad;
+    for (const b of champ.buffs) if (b.adMult) dmg *= 1 + b.adMult;
+    if (target.buffs && target.buffs.some(b => b.dodge)) {
+      this.float(target.x, target.y - 48, '闪避', '#9fe0ff', 13);
+      return;
+    }
     const crit = Math.random() < s.crit;
     if (crit) dmg *= 1.75 + s.critDmg;
     if (champ.empower) {
@@ -1011,7 +1057,12 @@ export class Game {
     if (!cc || !target) return;
     if (target.kind === 'champion') {
       const ten = Math.min(0.8, target.stats.tenacity || 0);
-      const dur = cc.dur * (1 - ten);
+      let base = cc.dur;
+      if (cc.scaleRange && source) {
+        const d = dist(source.x, source.y, target.x, target.y);
+        base = Math.min(cc.maxDur || cc.dur, cc.dur + (d / cc.scaleRange) * ((cc.maxDur || cc.dur) - cc.dur));
+      }
+      const dur = base * (1 - ten);
       if (cc.type === 'slow') {
         target.addBuff({ id: 'slow', source, t: dur, slow: cc.amt });
       } else if (cc.type === 'stun') {
@@ -1039,7 +1090,7 @@ export class Game {
     }
   }
 
-  dashUnit(champ, toX, toY, dur, dmg, dmgType, cc, radius) {
+  dashUnit(champ, toX, toY, dur, dmg, dmgType, cc, radius, knockback = 0) {
     const from = clampToLane(champ.x, champ.y);
     const to = clampToLane(toX, toY);
     const ang = angleTo(from.x, from.y, to.x, to.y);
@@ -1050,6 +1101,15 @@ export class Game {
         if (radius) {
           this.aoeDamage(champ, to.x, to.y, radius, dmg, dmgType, { ability: true });
           this.fx('shock', { x: to.x, y: to.y, r: radius, color: '#ffd27a' });
+        }
+        if (knockback) {
+          for (const e of this.hostiles(champ)) {
+            if (dist(to.x, to.y, e.x, e.y) < (radius || 200) + e.r) {
+              const a2 = angleTo(to.x, to.y, e.x, e.y);
+              const p3 = clampToLane(e.x + Math.cos(a2) * knockback, e.y + Math.sin(a2) * knockback);
+              e.x = p3.x; e.y = p3.y;
+            }
+          }
         }
       },
     };
@@ -1086,10 +1146,7 @@ export class Game {
     if (len < 1) { dx = Math.cos(champ.facing); dy = Math.sin(champ.facing); len = 1; }
     const nx = dx / len, ny = dy / len;
     champ.facing = Math.atan2(ny, nx);
-    const dmg = ab.dmg ? ab.dmg[Math.min(rank - 1, ab.dmg.length - 1)] : 0;
-    const ratio = ab.ratio || 0;
-    const ratioType = ab.ratioType || 'ap';
-    const amount = dmg + ratio * (ratioType === 'ad' ? champ.stats.ad : ratioType === 'maxHp' ? champ.maxHp : champ.stats.ap);
+    const amount = abilityAmount(champ, ab, rank, 'dmg');
     const info = { ab, rank, amount, aim, nx, ny, len, slot };
 
     this.emit('cast', { champ, slot, ab });
@@ -1100,11 +1157,18 @@ export class Game {
   }
 
   resolveCast(champ, c) {
-    const { ab, amount, nx, ny, aim, len } = c.info;
+    const { ab, rank, amount, nx, ny, aim, len } = c.info;
     const team = champ.team;
     const color = ab.color || '#9fe0ff';
     const range = Math.min(ab.range || 800, len);
     switch (ab.type) {
+      case 'scout': {
+        this.fx('scout', { x: aim.x, y: aim.y, r: ab.radius || 600, color });
+        for (const e of this.hostiles(champ)) {
+          if (dist(aim.x, aim.y, e.x, e.y) <= (ab.radius || 600)) e.addBuff({ id: 'revealed', source: champ, t: ab.dur || 5 });
+        }
+        break;
+      }
       case 'line': {
         const dir = ab.targetEnemy ? this.nearestEnemyDir(champ, ab.range) : null;
         const ax = dir ? dir.x : champ.x, ay = dir ? dir.y : champ.y;
@@ -1116,6 +1180,7 @@ export class Game {
           dmg: amount, dmgType: ab.dmgType || 'magic', range: ab.range || 900,
           pierce: ab.pierce === true ? 99 : (ab.pierce || 0), cc: ab.cc, color,
           explode: ab.explode || 0, visual: 'orb', ability: true, crit: false,
+          return3: !!ab.return3,
         });
         this.projectiles.push(p);
         this.fx('castline', { x: champ.x, y: champ.y, ang, color, len: 600 });
@@ -1180,11 +1245,18 @@ export class Game {
       }
       case 'dash': {
         let tx = champ.x + nx * ab.range, ty = champ.y + ny * ab.range;
+        let hitTarget = null;
         if (ab.targetEnemy) {
           const e = this.nearestEnemyAlong(champ, nx, ny, ab.range);
-          if (e) { tx = e.x; ty = e.y; }
+          if (e) { tx = e.x; ty = e.y; hitTarget = e; }
         }
-        this.dashUnit(champ, tx, ty, 0.22, amount, ab.dmgType, ab.cc, ab.radius || 0);
+        if (ab.knockback && hitTarget) {
+          const ang = angleTo(champ.x, champ.y, hitTarget.x, hitTarget.y);
+          const p2 = clampToLane(hitTarget.x + Math.cos(ang) * ab.knockback, hitTarget.y + Math.sin(ang) * ab.knockback);
+          hitTarget.x = p2.x; hitTarget.y = p2.y;
+          this.fx('knockback', { x: hitTarget.x, y: hitTarget.y });
+        }
+        this.dashUnit(champ, tx, ty, 0.22, amount, ab.dmgType, ab.cc, ab.radius || 0, ab.knockback || 0);
         break;
       }
       case 'buff': {
@@ -1193,13 +1265,14 @@ export class Game {
           if (ab.radius && ab.ally && dist(t.x, t.y, champ.x, champ.y) > ab.radius) continue;
           if (ab.cleanse) t.cleanse();
           if (ab.shield) {
-            const sh = ab.shield[Math.min(c.rank - 1, ab.shield.length - 1)] + (ab.ratio || 0) * (ratioTypeOf(champ, ab) === 'ap' ? champ.stats.ap : champ.stats.ad);
+            let sh = abilityAmount(champ, { ...ab, dmg: ab.shield }, rank, 'shield');
+            if (ab.shieldHpPct) sh += champ.maxHp * ab.shieldHpPct;
             t.shield += sh;
             this.fx('shield', { x: t.x, y: t.y, color });
             if (t.hasHook('shieldPower')) t.addBuff({ id: 'shieldpower', source: t, t: 3, dmgBoost: 0.3 });
           }
           if (ab.heal) {
-            const hv = (ab.heal[Math.min(c.rank - 1, ab.heal.length - 1)] || 0) * (1 + (champ.stats.healPct || 0));
+            const hv = abilityAmount(champ, { ...ab, dmg: ab.heal }, rank, 'heal') * (1 + (champ.stats.healPct || 0));
             t.hp = Math.min(t.maxHp, t.hp + hv);
             this.float(t.x, t.y - 50, '+' + Math.round(hv), '#4fe08a', 15);
             this.fx('heal', { x: t.x, y: t.y });
@@ -1211,6 +1284,9 @@ export class Game {
           if (ab.aura && ab.aura.ms) buff.ms = (buff.ms || 0) + ab.aura.ms;
           if (ab.dmgReduce) buff.dmgReduce = ab.dmgReduce;
           if (ab.dodge) buff.dodge = true;
+          if (ab.adMult) buff.adMult = (buff.adMult || 0) + ab.adMult;
+          if (ab.as) buff.as = (buff.as || 0) + ab.as;
+          if (ab.ms) buff.ms = (buff.ms || 0) + ab.ms;
           if (ab.stealth) buff.stealth = true;
           if (buff.t) t.addBuff({ id: 'buff_' + ab.name, label: ab.name, source: champ, ...buff });
           t.recalc();
@@ -1219,7 +1295,10 @@ export class Game {
         if (ab.endDmg && ab.type === 'buff') {
           const cx = champ.x, cy = champ.y;
           setTimeout(() => {}, 0);
-          this.aoeQueue.push({ x: cx, y: cy, r: ab.radius || 240, delay: ab.dur || 2, t: 0, source: champ, dmg: ab.endDmg[Math.min(c.rank - 1, ab.endDmg.length - 1)] + (ab.ratio || 0) * champ.stats.ap, dmgType: 'magic', cc: ab.cc, color });
+          let endDmg = ab.endDmg ? ab.endDmg[Math.min(rank - 1, ab.endDmg.length - 1)] : 0;
+          if (ab.endDmgHpPct) endDmg += champ.maxHp * ab.endDmgHpPct;
+          endDmg += (ab.ratios || []).reduce((acc, r) => acc + (r.coeff || 0) * statValue(champ, r.stat), 0);
+          this.aoeQueue.push({ x: cx, y: cy, r: ab.radius || 240, delay: ab.dur || 2, t: 0, source: champ, dmg: endDmg, dmgType: 'magic', cc: ab.cc, color });
         }
         break;
       }

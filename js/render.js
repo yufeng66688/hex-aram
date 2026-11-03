@@ -395,7 +395,7 @@ export class Renderer {
     const cc = c.ccState();
     const moving = !!(c.moveTarget || c.attackTarget);
     const bob = moving ? Math.sin(this.time * 12 + c.id) * 2.2 : Math.sin(this.time * 2 + c.id) * 0.8;
-    const stealth = cc.stealth > 0 && c.team !== player.team;
+    const stealth = cc.stealth > 0 && c.team !== player.team && !c.buffs.some(b => b.id === 'revealed');
     ctx.save();
     ctx.globalAlpha = stealth ? 0.35 : 1;
     ctx.translate(c.x, c.y + bob);
@@ -870,7 +870,7 @@ export class Renderer {
         ctx.strokeStyle = d.color; ctx.globalAlpha = .55 + Math.sin(this.time * 20) * .2;
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
-        ctx.globalAlpha = .18; ctx.fillStyle = d.color;
+        ctx.globalAlpha = .08; ctx.fillStyle = d.color;
         ctx.beginPath(); ctx.arc(0, 0, r * k, 0, 7); ctx.fill();
       } else if (fx.kind === 'shield') {
         ctx.globalAlpha = 1 - k;

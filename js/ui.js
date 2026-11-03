@@ -263,8 +263,7 @@ export class UI {
     rolls.forEach((def, i) => {
       const card = document.createElement('div');
       card.className = 'rc' + (i === selectedIdx ? ' sel' : '');
-      const cv = document.createElement('canvas'); cv.width = 96; cv.height = 96;
-      paintPortrait(cv, def, 'blue');
+      const cv = document.createElement('img'); cv.className = 'rc-img'; cv.src = def.icon;
       const info = document.createElement('div');
       info.innerHTML = `<div class="rname">${def.name}</div>
         <div class="rtitle">${def.title} · ${def.role}</div>
@@ -284,15 +283,17 @@ export class UI {
   initForGame(game, player) {
     this.el.hud.classList.remove('hidden');
     this.game = game; this.player = player;
-    paintPortrait(this.el.portrait, player.def, player.team);
+    const pctx = this.el.portrait.getContext('2d');
+    const pimg = new Image();
+    pimg.onload = () => { pctx.clearRect(0, 0, 120, 120); pctx.drawImage(pimg, 0, 0, 120, 120); };
+    pimg.src = player.def.icon;
+    pctx.fillStyle = '#0a1417'; pctx.fillRect(0, 0, 120, 120);
     this.el.pName.textContent = `${player.def.name} · ${player.name}`;
     // 技能图标
     player.def.abilities.forEach((ab, i) => {
       const btn = this.abButtons[i];
-      const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
-      paintAbility(cv, ab, player.def, i);
       const img = btn.querySelector('img');
-      img.src = cv.toDataURL();
+      img.src = ab.icon || '';
       btn.onmouseenter = (e) => this.showTip(e, player, i);
       btn.onmousemove = (e) => this.moveTip(e);
       btn.onmouseleave = () => { this.hideTip(); this.hoverSlot = -1; };
@@ -331,8 +332,7 @@ export class UI {
         f.className = 'frame';
         if (team === 'red') f.style.borderRightColor = '#ff4d5e';
         const av = document.createElement('div'); av.className = 'avatar';
-        const cv = document.createElement('canvas'); cv.width = 34; cv.height = 34;
-        paintPortrait(cv, c.def, team);
+        const cv = document.createElement('img'); cv.src = c.def.icon; cv.alt = c.name;
         av.appendChild(cv);
         const body = document.createElement('div');
         body.innerHTML = `<div class="fname"><b>${c.name}</b><span class="lv">1</span></div>
@@ -565,7 +565,7 @@ export class UI {
     const table = (team) => {
       const rows = game.champions.filter(c => c.team === team).map(c => `
         <tr class="${team}">
-          <td><div class="who"><canvas width="26" height="26" data-champ="${c.id}"></canvas><span>${c.name}</span></div></td>
+          <td><div class="who"><img class="sb-avatar" src="${c.def.icon}" alt=""><span>${c.name}</span></div></td>
           <td>${c.level}</td><td>${c.kills}/${c.deaths}/${c.assists}</td><td>${c.cs}</td>
           <td>◆${Math.floor(c.gold)}</td><td>${Math.round(c.damageDone)}</td>
         </tr>`).join('');
@@ -573,10 +573,7 @@ export class UI {
         <table class="sb-table"><thead><tr><th>英雄</th><th>等级</th><th>KDA</th><th>补刀</th><th>金币</th><th>伤害</th></tr></thead><tbody>${rows}</tbody></table>`;
     };
     this.el.sbTables.innerHTML = table('blue') + table('red');
-    this.el.sbTables.querySelectorAll('canvas[data-champ]').forEach(cv => {
-      const c = game.champions.find(x => x.id === +cv.dataset.champ);
-      if (c) paintPortrait(cv, c.def, c.team);
-    });
+
   }
 
   /* ---------- 结束 ---------- */
