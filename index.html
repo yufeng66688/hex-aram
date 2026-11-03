@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>海克斯大乱斗 · HEX ARAM</title>
+<meta name="description" content="单线 5v5 海克斯大乱斗：强化符文、雪球、无回城，浏览器直接开打。" />
+<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hud hidden">
+    <div class="topbar">
+      <div class="team-score blue"><span class="num" id="score-blue">0</span><span class="lbl">蓝方</span></div>
+      <div class="clock"><div id="game-time">00:00</div><div class="wave" id="wave-timer">下一波 10</div></div>
+      <div class="team-score red"><span class="num" id="score-red">0</span><span class="lbl">红方</span></div>
+    </div>
+
+    <div class="team-frames" id="frames-blue"></div>
+    <div class="team-frames right" id="frames-red"></div>
+
+    <div class="killfeed" id="killfeed"></div>
+    <div class="announce" id="announce"></div>
+
+    <div class="minimap-wrap">
+      <canvas id="minimap" width="300" height="74"></canvas>
+      <div class="mm-label">嚎哭深渊 · 单线</div>
+    </div>
+
+    <div class="buffbar" id="buffbar"></div>
+
+    <div class="death-overlay hidden" id="death-overlay">
+      <div class="dt-title">你已阵亡</div>
+      <div class="dt-timer" id="dt-timer">5</div>
+      <div class="dt-hint">按 <b>B</b> 打开军械库 · 复活倒计时</div>
+    </div>
+
+    <div class="bottom-hud">
+      <div class="portrait-wrap">
+        <canvas id="portrait" width="120" height="120"></canvas>
+        <div class="level" id="p-level">1</div>
+        <div class="p-name" id="p-name">—</div>
+      </div>
+
+      <div class="vitals">
+        <div class="bar hp"><div class="fill" id="hp-fill"></div><span id="hp-text">0 / 0</span></div>
+        <div class="bar mp"><div class="fill" id="mp-fill"></div><span id="mp-text">0 / 0</span></div>
+        <div class="statline" id="statline"></div>
+      </div>
+
+      <div class="ability-bar">
+        <div class="abilities">
+          <button class="ab" data-slot="0"><span class="key">Q</span><img alt="" /><i class="cd"></i><span class="cdtext"></span></button>
+          <button class="ab" data-slot="1"><span class="key">W</span><img alt="" /><i class="cd"></i><span class="cdtext"></span></button>
+          <button class="ab" data-slot="2"><span class="key">E</span><img alt="" /><i class="cd"></i><span class="cdtext"></span></button>
+          <button class="ab ult" data-slot="3"><span class="key">R</span><img alt="" /><i class="cd"></i><span class="cdtext"></span></button>
+        </div>
+        <div class="spells">
+          <button class="sp" data-spell="d"><span class="key">D</span><img alt="" /><i class="cd"></i></button>
+          <button class="sp" data-spell="f"><span class="key">F</span><img alt="" /><i class="cd"></i></button>
+        </div>
+      </div>
+
+      <div class="items" id="items"></div>
+
+      <div class="money">
+        <div class="gold" id="gold-text">0</div>
+        <div class="kda" id="kda-text">0 / 0 / 0</div>
+      </div>
+    </div>
+
+    <div class="hint" id="hint">右键移动 / 攻击 · QWER 施法（智能施法）· D 雪球 · F 闪现 · B 商店（阵亡时）· Tab 计分板</div>
+  </div>
+
+  <!-- ===== START ===== -->
+  <div id="start-screen" class="screen">
+    <div class="start-bg"></div>
+    <div class="start-inner">
+      <div class="brand">
+        <div class="hex">◈</div>
+        <h1>海克斯大乱斗</h1>
+        <div class="sub">HEX ARAM · 嚎哭深渊 · 单线 5v5</div>
+        <p class="tag">无回城 · 共享经验 · 雪球开团 · 强化符文改变战局</p>
+      </div>
+
+      <div class="roll-panel">
+        <div class="roll-title">你的英雄 <span id="roll-hint">（随机三名，选一个开打）</span></div>
+        <div class="roll-cards" id="roll-cards"></div>
+        <div class="roll-actions">
+          <button class="btn ghost" id="btn-reroll">重随 <em id="reroll-count">1</em></button>
+          <div class="diff">
+            <span>难度</span>
+            <button data-diff="easy" class="on">简单</button>
+            <button data-diff="normal">普通</button>
+            <button data-diff="hard">困难</button>
+          </div>
+          <button class="btn primary" id="btn-start" disabled>进入嚎哭深渊</button>
+        </div>
+      </div>
+
+      <div class="controls-grid">
+        <div><b>右键</b> 移动 / 攻击 / 补刀</div>
+        <div><b>Q W E R</b> 智能施法（朝鼠标）</div>
+        <div><b>D</b> 雪球：命中后再按 D 突进</div>
+        <div><b>F</b> 闪现</div>
+        <div><b>B</b> 阵亡时开商店</div>
+        <div><b>Tab</b> 计分板 · <b>空格</b> 回中 · <b>Y</b> 锁定视角</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SHOP ===== -->
+  <div id="shop" class="overlay hidden">
+    <div class="panel shop-panel">
+      <div class="panel-head">
+        <h2>海克斯军械库</h2>
+        <div class="shop-gold">金币 <b id="shop-gold">0</b></div>
+        <button class="close" data-close="shop">✕</button>
+      </div>
+      <div class="shop-body">
+        <div class="shop-grid" id="shop-grid"></div>
+        <aside class="shop-side">
+          <h3>已购装备</h3>
+          <div class="owned" id="shop-owned"></div>
+          <h3>强化符文</h3>
+          <div class="aug-list" id="shop-augs"></div>
+          <p class="tiny">海克斯大乱斗：阵亡时才能购物。卖出返还 70%。</p>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AUGMENTS ===== -->
+  <div id="augment-modal" class="overlay hidden">
+    <div class="panel aug-panel">
+      <div class="panel-head">
+        <h2>海克斯强化 <span class="tier-label" id="aug-tier">银色</span></h2>
+        <div class="aug-sub">三选一 · 本局永久生效</div>
+      </div>
+      <div class="aug-cards" id="aug-cards"></div>
+      <div class="aug-foot">
+        <button class="btn ghost" id="aug-reroll">重随（<span id="aug-reroll-count">1</span>）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SCOREBOARD ===== -->
+  <div id="scoreboard" class="overlay hidden">
+    <div class="panel sb-panel">
+      <div class="panel-head"><h2>计分板</h2><div class="sb-time" id="sb-time">00:00</div></div>
+      <div class="sb-tables" id="sb-tables"></div>
+    </div>
+  </div>
+
+  <!-- ===== PAUSE ===== -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel pause-panel">
+      <h2>已暂停</h2>
+      <div class="pause-actions">
+        <button class="btn primary" id="btn-resume">继续</button>
+        <button class="btn ghost" id="btn-restart">重开一局</button>
+        <button class="btn ghost" id="btn-quit">返回标题</button>
+      </div>
+      <div class="tiny">Esc 继续 · 音量 <input id="vol" type="range" min="0" max="1" step="0.05" value="0.6"></div>
+    </div>
+  </div>
+
+  <!-- ===== END ===== -->
+  <div id="end-screen" class="screen hidden">
+    <div class="end-inner">
+      <h1 id="end-title">胜利</h1>
+      <div class="end-sub" id="end-sub">蓝方摧毁了敌方水晶</div>
+      <div class="end-stats" id="end-stats"></div>
+      <div class="end-actions">
+        <button class="btn primary" id="btn-again">再来一局</button>
+        <button class="btn ghost" id="btn-to-title">返回标题</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="load-hex">◈</div>
+    <div>正在构筑嚎哭深渊…</div>
+  </div>
+</div>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
