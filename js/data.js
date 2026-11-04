@@ -114,7 +114,8 @@ import { KITS } from './kits.js';
 import { KITS2 } from './kits2.js';
 import { KITS3 } from './kits3.js';
 import { KITS4 } from './kits4.js';
-const KIT_ALL = [...KITS, ...KITS2, ...KITS3, ...KITS4];
+import { KITS5 } from './kits5.js';
+const KIT_ALL = [...KITS, ...KITS2, ...KITS3, ...KITS4, ...KITS5];
 
 const ROLE_CN = { Marksman: '射手', Mage: '法师', Tank: '坦克', Fighter: '战士', Assassin: '刺客', Support: '辅助' };
 const PALETTE = {

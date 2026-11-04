@@ -48,6 +48,7 @@
 ## 本地运行
 
 ```bash
+cd hex-aram
 python3 -m http.server 8899
 # 打开 http://127.0.0.1:8899/
 ```

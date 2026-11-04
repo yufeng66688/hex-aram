@@ -1406,6 +1406,12 @@ export class Game {
           if (ab.airborneBonus && (best.hasBuff('knockup') || best.hasBuff('stun'))) dmg2 *= 1 + ab.airborneBonus;
           this.damage(champ, best, dmg2, ab.dmgType || 'phys', { ability: true });
           if (ab.cc) this.applyCC(champ, best, ab.cc);
+          if (ab.knockback) {
+            const a3 = angleTo(champ.x, champ.y, best.x, best.y);
+            const p3 = clampToLane(best.x + Math.cos(a3) * ab.knockback, best.y + Math.sin(a3) * ab.knockback);
+            best.x = p3.x; best.y = p3.y;
+            this.fx('knockback', { x: best.x, y: best.y });
+          }
           if (ab.pull) {
             const a2 = angleTo(champ.x, champ.y, best.x, best.y);
             const p2 = clampToLane(champ.x + Math.cos(a2) * ab.pull, champ.y + Math.sin(a2) * ab.pull);
@@ -1506,11 +1512,15 @@ export class Game {
             if (dist(champ.x, champ.y, e.x, e.y) < ab.radius + e.r) {
               this.damage(champ, e, amount, ab.dmgType || 'magic', { ability: true });
               if (ab.cc) this.applyCC(champ, e, ab.cc);
+              if (ab.executeBelow && e.alive && e.hp / e.maxHp <= ab.executeBelow) {
+                this.damage(champ, e, e.maxHp * 0.2, 'true', { ability: true });
+              }
             }
           }
         }
         this.fx('nova', { x: champ.x, y: champ.y, r: ab.radius, color });
         this.shake = Math.max(this.shake, 3);
+        if (ab.stealth) champ.addBuff({ id: 'stealth', source: champ, t: ab.dur || 2, stealth: true });
         break;
       }
       case 'field': {
