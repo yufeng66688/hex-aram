@@ -32,6 +32,23 @@ export const LAYOUT = {
   relics: [{ x: 2560, y: 392 }, { x: 3440, y: 608 }],
 };
 
+// 草丛（嚎哭深渊沿路草位，圆形判定）
+export const BRUSHES = [
+  { x: 1120, y: 306, r: 96 }, { x: 1120, y: 694, r: 96 },
+  { x: 1760, y: 306, r: 88 }, { x: 1760, y: 694, r: 88 },
+  { x: 2560, y: 360, r: 92 }, { x: 3440, y: 640, r: 92 },
+  { x: 4240, y: 306, r: 88 }, { x: 4240, y: 694, r: 88 },
+  { x: 4880, y: 306, r: 96 }, { x: 4880, y: 694, r: 96 },
+];
+
+export function inBrush(x, y) {
+  for (const b of BRUSHES) {
+    const dx = x - b.x, dy = y - b.y;
+    if (dx * dx + dy * dy <= b.r * b.r) return b;
+  }
+  return null;
+}
+
 export const LANE = {
   top: WORLD.laneTop,
   bot: WORLD.laneBot,

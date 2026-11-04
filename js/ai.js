@@ -37,7 +37,7 @@ export class BotAI {
     this.think = this.reaction + Math.random() * 0.12;
 
     const g = this.game;
-    const enemies = g.units.filter(e => e.alive && e.team !== c.team);
+    const enemies = g.units.filter(e => e.alive && e.team !== c.team && !e.hidden);
     const champs = enemies.filter(e => e.kind === 'champion');
     const minions = enemies.filter(e => e.kind === 'minion');
     const myMinions = g.units.filter(e => e.alive && e.team === c.team && e.kind === 'minion');

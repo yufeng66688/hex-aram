@@ -111,6 +111,8 @@ export const RARITY_LABEL = { silver: '银色', gold: '金色', prismatic: '棱�
 /* 技能 type：
    line / cone / circle / targeted / dash / buff / beam / wall / nova / field  */
 import { KITS } from './kits.js';
+import { KITS2 } from './kits2.js';
+const KIT_ALL = [...KITS, ...KITS2];
 
 const ROLE_CN = { Marksman: '射手', Mage: '法师', Tank: '坦克', Fighter: '战士', Assassin: '刺客', Support: '辅助' };
 const PALETTE = {
@@ -122,7 +124,7 @@ const PALETTE = {
   Support: { body: '#7fb8a0', trim: '#2f5a48', hair: '#e6fff2', skin: '#f1d2b6', weapon: 'harp' },
 };
 
-export const CHAMPIONS = KITS.map((c) => {
+export const CHAMPIONS = KIT_ALL.map((c) => {
   const tag = (c.tags || []).find(t => PALETTE[t]) || 'Fighter';
   const ab = c.abilities.map((a, i) => ({
     ...a,
@@ -137,7 +139,7 @@ export const CHAMPIONS = KITS.map((c) => {
     role: ROLE_CN[tag] || tag,
     tip: `${c.title} · ${(c.tags || []).map(t => ROLE_CN[t] || t).join(' / ')}`,
     palette: PALETTE[tag],
-    icon: c.icon,
+    icon: c.icon || `./assets/champions/${c.id}.png`,
     stats: c.stats,
     abilities: ab,
   };

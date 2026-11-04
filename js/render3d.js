@@ -4,7 +4,7 @@
    ============================================================ */
 import * as THREE from '../vendor/three.module.js';
 import { WORLD } from './data.js';
-import { LAYOUT, buildBackground, buildMinimapBackground, clampToLane } from './map.js';
+import { LAYOUT, BRUSHES, buildBackground, buildMinimapBackground, clampToLane } from './map.js';
 import { dist, clamp } from './sim.js';
 
 const TEAM_COL = { blue: 0x3aa0ff, red: 0xff4d5e };
@@ -228,6 +228,26 @@ export class Renderer {
         shard.position.set(x + (z % 7) * 6, h / 2, z);
         s.add(shard);
       }
+    }
+
+    // 草丛
+    const bushMat = new THREE.MeshStandardMaterial({ color: 0x1f4a44, roughness: 0.95 });
+    const bushMat2 = new THREE.MeshStandardMaterial({ color: 0x2c6157, roughness: 0.95 });
+    for (const b of BRUSHES) {
+      const g = new THREE.Group();
+      const patch = new THREE.Mesh(new THREE.CircleGeometry(b.r, 24), new THREE.MeshBasicMaterial({ color: 0x0c2a2a, transparent: true, opacity: 0.55, side: THREE.DoubleSide, toneMapped: false }));
+      patch.rotation.x = -Math.PI / 2; patch.position.y = 2.4; g.add(patch);
+      for (let i = 0; i < 12; i++) {
+        const a = Math.random() * Math.PI * 2, rr = Math.random() * b.r * 0.85;
+        const s2 = 8 + Math.random() * 14;
+        const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(s2, 0), Math.random() > .5 ? bushMat : bushMat2);
+        bush.position.set(Math.cos(a) * rr, s2 * 0.55, Math.sin(a) * rr);
+        bush.scale.y = 0.7;
+        bush.castShadow = true;
+        g.add(bush);
+      }
+      g.position.set(b.x, 0, b.y);
+      s.add(g);
     }
 
     // 中央符文环
@@ -495,6 +515,8 @@ export class Renderer {
         }
         mesh.position.set(u.x, 0, u.y);
         mesh.rotation.y = Math.PI / 2 - u.facing;
+        const viewer = this.game.player;
+        mesh.visible = !(u.hidden && viewer && u.team !== viewer.team);
         if (u.kind === 'champion') {
           const moving = !!(u.moveTarget || (u.attackTarget && u.stats.range > 0));
           const phase = this.time * 9 + u.id;
@@ -662,6 +684,8 @@ export class Renderer {
     // 投射物
     this.syncProjectiles(game);
     this.syncFields(game);
+    // 治疗圣物
+    this.syncRelics(game);
     // 光标
     const w = this.screenToWorld(mouse.x, mouse.y);
     if (this.cursor) {
@@ -689,6 +713,33 @@ export class Renderer {
     }
     this.renderer.render(this.scene, this.camera);
     this.drawOverlay(game, player);
+  }
+
+  syncRelics(game) {
+    if (!this.relicMeshes) this.relicMeshes = new Map();
+    const seen = new Set();
+    for (const r of game.relics) {
+      const key = r.x.toFixed(0) + ':' + r.y.toFixed(0);
+      seen.add(key);
+      let m = this.relicMeshes.get(key);
+      if (!m) {
+        m = new THREE.Group();
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(16, 0), new THREE.MeshBasicMaterial({ color: 0x7ef0c0, toneMapped: false }));
+        gem.position.y = 34;
+        const glow = new THREE.Mesh(new THREE.RingGeometry(20, 26, 24), new THREE.MeshBasicMaterial({ color: 0x7ef0c0, transparent: true, opacity: .5, side: THREE.DoubleSide, toneMapped: false }));
+        glow.rotation.x = -Math.PI / 2; glow.position.y = 2.4;
+        m.add(gem, glow);
+        m.userData = { gem, glow };
+        this.scene.add(m);
+        this.relicMeshes.set(key, m);
+      }
+      m.position.set(r.x, 0, r.y);
+      m.userData.gem.rotation.y = this.time * 1.6;
+      m.userData.gem.position.y = 34 + Math.sin(this.time * 2.4) * 5;
+    }
+    for (const [k, m] of this.relicMeshes) {
+      if (!seen.has(k)) { this.scene.remove(m); this.relicMeshes.delete(k); }
+    }
   }
 
   syncProjectiles(game) {
@@ -802,6 +853,12 @@ export class Renderer {
     const sx = w / WORLD.w, sy = h / WORLD.h;
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(this.miniBg, 0, 0, w, h);
+    ctx.fillStyle = 'rgba(70,150,120,.55)';
+    for (const b of BRUSHES) {
+      ctx.beginPath();
+      ctx.arc(b.x * sx, b.y * sy, Math.max(2, b.r * sx * 0.8), 0, 7);
+      ctx.fill();
+    }
     for (const u of game.units) {
       if (!u.alive) continue;
       if (u.kind === 'tower' || u.kind === 'inhib' || u.kind === 'nexus') {

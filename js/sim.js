@@ -5,7 +5,7 @@
 import {
   WORLD, TEAM, GAME, XP_TABLE, MINIONS, STRUCTURES, ITEM_BY_ID, AUGMENT_BY_ID,
 } from './data.js';
-import { LAYOUT, clampToLane, mulberry32 } from './map.js';
+import { LAYOUT, clampToLane, mulberry32, inBrush } from './map.js';
 
 let NEXT_ID = 1;
 const TAU = Math.PI * 2;
@@ -60,6 +60,9 @@ class Unit {
     this.facing = team === 'blue' ? 0 : Math.PI;
     this.flash = 0;
     this.hitTimer = 0;
+    this.inBrush = null;
+    this.hidden = false;
+    this.revealT = 0;
   }
   get aliveEnemy() { return this.alive; }
   addBuff(b) {
@@ -611,7 +614,7 @@ export class Minion extends Unit {
   acquire() {
     let best = null, bestScore = Infinity;
     for (const e of this.game.units) {
-      if (!e.alive || e.team === this.team || e.kind === 'nexus') continue;
+      if (!e.alive || e.team === this.team || e.kind === 'nexus' || e.hidden) continue;
       if (e.kind === 'tower' || e.kind === 'inhib') {
         const d = dist(this.x, this.y, e.x, e.y) - e.r;
         if (d < 520 && d < bestScore) { best = e; bestScore = d; }
@@ -665,7 +668,7 @@ export class Structure extends Unit {
     let minion = null, md = Infinity;
     let champ = null, cd = Infinity;
     for (const e of this.game.units) {
-      if (!e.alive || e.team === this.team) continue;
+      if (!e.alive || e.team === this.team || e.hidden) continue;
       const d = dist(this.x, this.y, e.x, e.y);
       if (d > this.def.range + e.r) continue;
       if (e.kind === 'minion') { if (d < md) { md = d; minion = e; } }
@@ -686,7 +689,7 @@ export class Projectile {
       hit: new Set(), cc: null, color: '#9fe0ff', kind: 'skillshot',
       target: null, speed: 900, onHit: null, onEnd: null,
       slowResist: false, source: null, width: 20, explode: 0, visual: 'orb',
-      returning: false, returnPhase: false, dead: false, homing: false, return3: false,
+      returning: false, returnPhase: false, dead: false, homing: false, return3: false, pull: 0,
       trail: [], crit: false, ability: true,
     }, o);
     this.startX = this.x; this.startY = this.y;
@@ -750,6 +753,13 @@ export class Projectile {
   }
   applyHit(e) {
     const g = this.game;
+    if (this.pull && this.owner) {
+      const ow = this.owner;
+      const ang = angleTo(ow.x, ow.y, e.x, e.y);
+      const p2 = clampToLane(ow.x + Math.cos(ang) * this.pull, ow.y + Math.sin(ang) * this.pull);
+      e.x = p2.x; e.y = p2.y;
+      g.fx('pull', { x: p2.x, y: p2.y });
+    }
     if (this.onHit) this.onHit(e, this);
     if (this.dmg > 0) g.damage(this.source || this.owner, e, this.dmg, this.dmgType, { ability: this.ability, crit: this.crit });
     if (this.cc) g.applyCC(this.source || this.owner, e, this.cc);
@@ -844,7 +854,7 @@ export class Game {
     const reach = champ.stats.range + 60;
     let best = null, bs = Infinity;
     for (const e of this.units) {
-      if (!e.alive || e.team === champ.team) continue;
+      if (!e.alive || e.team === champ.team || e.hidden) continue;
       if (e.kind === 'minion' || e.kind === 'champion') {
         const d = dist(champ.x, champ.y, e.x, e.y) - e.r;
         const minionBias = e.kind === 'minion' ? 0.6 : 1;
@@ -1013,6 +1023,7 @@ export class Game {
     }
     if (dmg <= 0) return 0;
 
+    if (source && source.kind === 'champion') source.revealT = Math.max(source.revealT || 0, 1.5);
     target.hp -= dmg;
     if (!Number.isFinite(target.hp)) target.hp = 1;
     target.flash = 0.12;
@@ -1152,6 +1163,7 @@ export class Game {
 
   applyCC(source, target, cc) {
     if (!cc || !target) return;
+    if (target.buffs && target.buffs.some(b => b.ccImmune)) return;
     if (target.kind === 'champion') {
       const ten = Math.min(0.8, target.stats.tenacity || 0);
       let base = cc.dur;
@@ -1265,6 +1277,7 @@ export class Game {
     const amount = abilityAmount(champ, ab, rank, 'dmg');
     const info = { ab, rank, amount, aim, nx, ny, len, slot };
 
+    champ.revealT = Math.max(champ.revealT || 0, 1.5);
     this.emit('cast', { champ, slot, ab });
     this.audio('cast', champ.x, champ.y);
     champ.passiveOnCast();
@@ -1282,6 +1295,15 @@ export class Game {
     const color = ab.color || '#9fe0ff';
     const range = Math.min(ab.range || 800, len);
     switch (ab.type) {
+      case 'global': {
+        for (const e of this.units) {
+          if (!e.alive || e.team === champ.team || e.kind !== 'champion') continue;
+          this.damage(champ, e, amount, ab.dmgType || 'magic', { ability: true });
+          this.fx('global', { x: e.x, y: e.y, color });
+        }
+        this.fx('globalwave', { x: champ.x, y: champ.y, color });
+        break;
+      }
       case 'scout': {
         this.fx('scout', { x: aim.x, y: aim.y, r: ab.radius || 600, color });
         for (const e of this.hostiles(champ)) {
@@ -1300,7 +1322,7 @@ export class Game {
           dmg: amount, dmgType: ab.dmgType || 'magic', range: ab.range || 900,
           pierce: ab.pierce === true ? 99 : (ab.pierce || 0), cc: ab.cc, color,
           explode: ab.explode || 0, visual: 'orb', ability: true, crit: false,
-          return3: !!ab.return3,
+          return3: !!ab.return3, pull: ab.pull || 0,
         });
         this.projectiles.push(p);
         this.fx('castline', { x: champ.x, y: champ.y, ang, color, len: 600 });
@@ -1408,6 +1430,7 @@ export class Game {
           if (ab.as) buff.as = (buff.as || 0) + ab.as;
           if (ab.ms) buff.ms = (buff.ms || 0) + ab.ms;
           if (ab.stealth) buff.stealth = true;
+          if (ab.ccImmune) buff.ccImmune = true;
           if (buff.t) t.addBuff({ id: 'buff_' + ab.name, label: ab.name, source: champ, ...buff });
           t.recalc();
           this.fx('buff', { x: t.x, y: t.y, color });
@@ -1626,6 +1649,27 @@ export class Game {
 
     // 单位
     for (const u of this.units) u.update(dt);
+
+    // 草丛可见性：草内单位对外隐身，除非同草有敌人或刚出手
+    for (const u of this.units) {
+      if (!u.alive) continue;
+      u.inBrush = inBrush(u.x, u.y);
+      if (u.revealT > 0) u.revealT -= dt;
+    }
+    for (const u of this.units) {
+      if (!u.alive) continue;
+      u.hidden = false;
+      if (u.inBrush) {
+        let seen = u.revealT > 0;
+        if (!seen) {
+          for (const e of this.units) {
+            if (!e.alive || e.team === u.team || !e.inBrush) continue;
+            if (dist(e.x, e.y, u.x, u.y) < 140) { seen = true; break; }
+          }
+        }
+        u.hidden = !seen;
+      }
+    }
 
     // 飞行物
     for (const p of this.projectiles) p.update(dt);
