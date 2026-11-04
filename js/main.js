@@ -4,7 +4,7 @@
 import { CHAMPIONS, AUGMENTS, AUGMENT_BY_ID } from './data.js';
 import { Game, dist } from './sim.js';
 import { BotAI } from './ai.js';
-import { Renderer } from './render.js';
+import { Renderer } from './render3d.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { LAYOUT, buildBackground } from './map.js';
@@ -363,7 +363,7 @@ function frame(now) {
   let dt = (now - lastT) / 1000;
   lastT = now;
   if (!renderer || !game) return;
-  dt = Math.min(dt, 0.05);
+  dt = Math.max(0, Math.min(dt, 0.05));
 
   if (running && !paused) {
     acc += dt;
