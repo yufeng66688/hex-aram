@@ -26,6 +26,8 @@ export class Renderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.28;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#061823');
@@ -65,9 +67,17 @@ export class Renderer {
   buildWorld() {
     const s = this.scene;
     s.add(new THREE.HemisphereLight(0xe8f8ff, 0x1b3a46, 1.25));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.25);
-    dir.position.set(-900, 1200, -400);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.45);
+    dir.position.set(-700, 1100, 300);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.camera.left = -1200; dir.shadow.camera.right = 1200;
+    dir.shadow.camera.top = 1200; dir.shadow.camera.bottom = -1200;
+    dir.shadow.camera.near = 1; dir.shadow.camera.far = 3000;
+    dir.shadow.bias = -0.0006;
     s.add(dir);
+    s.add(dir.target);
+    this.sun = dir;
     const warm = new THREE.PointLight(0xffb066, 1.1, 1600, 2);
     warm.position.set(3000, 220, 500);
     s.add(warm);
@@ -117,6 +127,7 @@ export class Renderer {
     // 冰桥主体（有厚度）
     const slab = new THREE.Mesh(new THREE.BoxGeometry(WORLD.w, 76, 520), new THREE.MeshStandardMaterial({ color: 0x16323d, roughness: 0.95 }));
     slab.position.set(WORLD.w / 2, -38, 500);
+    slab.receiveShadow = true;
     s.add(slab);
 
     // 桥面贴图
@@ -138,6 +149,7 @@ export class Renderer {
     );
     top.rotation.x = -Math.PI / 2;
     top.position.set(WORLD.w / 2, 0.6, 500);
+    top.receiveShadow = true;
     s.add(top);
 
     // 桥缘石栏
@@ -347,13 +359,14 @@ export class Renderer {
     torso.position.y = 36;
     bodyG.add(torso);
     const limbs = [];
+    const legs = [], arms = [];
     for (const sx of [-7, 7]) {
       const leg = new THREE.Mesh(new THREE.CapsuleGeometry(3.4, 14, 3, 6), mat(pal.trim));
-      leg.position.set(sx, 14, 0); bodyG.add(leg); limbs.push(leg);
+      leg.position.set(sx, 14, 0); leg.geometry.translate(0, -7, 0); bodyG.add(leg); legs.push(leg);
     }
     for (const sx of [-13, 13]) {
       const arm = new THREE.Mesh(new THREE.CapsuleGeometry(3.2, 14, 3, 6), mat(pal.skin));
-      arm.position.set(sx, 38, 0); arm.rotation.z = sx > 0 ? -0.25 : 0.25; bodyG.add(arm);
+      arm.position.set(sx, 40, 0); arm.rotation.z = sx > 0 ? -0.25 : 0.25; bodyG.add(arm); arms.push(arm);
     }
     const trim = new THREE.Mesh(new THREE.CapsuleGeometry(12, 6, 3, 10), mat(pal.trim));
     trim.position.y = 22; bodyG.add(trim);
@@ -405,7 +418,7 @@ export class Renderer {
     bodyG.add(cape);
 
     g.scale.setScalar(1.7);
-    g.userData = { bodyG, ring, weapon, torso, head, pal, baseRing: 0.75 };
+    g.userData = { bodyG, ring, weapon, torso, head, pal, legs, arms, castT: 0 };
     return g;
   }
 
@@ -476,18 +489,32 @@ export class Renderer {
         let mesh = this.unitMeshes.get(u.id);
         if (!mesh) {
           mesh = u.kind === 'champion' ? this.championMesh(u) : this.minionMesh(u);
+          mesh.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
           this.scene.add(mesh);
           this.unitMeshes.set(u.id, mesh);
         }
         mesh.position.set(u.x, 0, u.y);
         mesh.rotation.y = Math.PI / 2 - u.facing;
         if (u.kind === 'champion') {
-          const bob = Math.sin(this.time * 9 + u.id) * (u.moveTarget || u.attackTarget ? 1.8 : 0.6);
-          mesh.userData.bodyG.position.y = bob;
-          const targetYaw = Math.PI / 2 - u.facing;
-          mesh.userData.bodyG.rotation.y = 0;
-          if (u.attackTarget) mesh.userData.bodyG.rotation.x = 0.12;
-          else mesh.userData.bodyG.rotation.x *= 0.8;
+          const moving = !!(u.moveTarget || (u.attackTarget && u.stats.range > 0));
+          const phase = this.time * 9 + u.id;
+          const bob = Math.sin(phase * 2) * (moving ? 1.8 : 0.6);
+          const ud = mesh.userData;
+          ud.bodyG.position.y = bob;
+          if (ud.legs && ud.legs.length) {
+            const swing = moving ? Math.sin(phase * 2) * 0.55 : 0;
+            ud.legs[0].rotation.x = swing;
+            ud.legs[1].rotation.x = -swing;
+          }
+          if (ud.arms && ud.arms.length) {
+            const sw = moving ? Math.sin(phase * 2 + Math.PI) * 0.35 : 0;
+            const casting = !!u.casting;
+            ud.arms[0].rotation.x = sw + (casting ? -0.9 : 0);
+            ud.arms[1].rotation.x = -sw + (casting ? -0.9 : 0);
+            if (ud.weapon) ud.weapon.rotation.x = casting ? -1.1 : 0.2 + (u.attackTarget ? -0.5 : 0);
+          }
+          const hitLunge = u.attackTarget && u.autoCd > 0.35 ? Math.sin((1 - u.autoCd) * Math.PI) * 0.25 : 0;
+          ud.bodyG.rotation.x = ud.bodyG.rotation.x * 0.8 + (hitLunge + (u.casting ? 0.15 : 0)) * 0.5;
           const ring = mesh.userData.ring;
           ring.material.opacity = u === g.player ? 0.95 : 0.7;
           ring.scale.setScalar(u === g.player ? 1.05 + Math.sin(this.time * 5) * 0.03 : 1);
@@ -497,6 +524,7 @@ export class Renderer {
         if (!mesh) {
           mesh = this.structureMesh(u);
           mesh.position.set(u.x, 0, u.y);
+          mesh.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
           this.scene.add(mesh);
           this.structMeshes.set(u.id, mesh);
         }

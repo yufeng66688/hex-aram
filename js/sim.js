@@ -152,6 +152,7 @@ export class Champion extends Unit {
     this.hexCore = 0;
     this.lastAbilityHit = 0;
     this.dmgReduceBuff = 0;
+    this.pstate = { flow: 0, shortFuse: 8, jaxStacks: 0, jaxT: 0, casts: 0, essence: 0, chord: false, qStacks: 0, ahriCharges: 0, ahriWindow: 0, alistarStacks: 0, maxHpBonus: 0 };
     this.recalc();
     this.hp = this.maxHp; this.mana = this.maxMana;
   }
@@ -216,6 +217,16 @@ export class Champion extends Unit {
       if (b.mrBuff) s.mr += b.mrBuff;
     }
     const cc = this.ccState();
+    s.maxHp += this.pstate?.maxHpBonus || 0;
+    if (this.def?.id === 'Wukong' && this.game) {
+      let n = 0;
+      for (const e of this.game.units) {
+        if (e.alive && e.kind === 'champion' && e.team !== this.team && dist(e.x, e.y, this.x, this.y) < 800) n++;
+      }
+      s.armor += Math.min(8, n) * 4;
+      s.mr += Math.min(8, n) * 4;
+    }
+    if (this.def?.id === 'Jax' && this.pstate) s.asPct += 0.03 * this.pstate.jaxStacks;
     s.maxHp = Math.round(s.maxHp * (1 + s.hpPct));
     s.ad = (s.baseAd + s.ad) * (1 + (s.adPct || 0));
     s.ap = s.ap * (1 + (s.apPct || 0));
@@ -336,6 +347,17 @@ export class Champion extends Unit {
       this.game.emit('announce', { text: '不屈触发', color: '#c9a6ff' });
     }
     if (this.unyieldCd > 0) this.unyieldCd -= dt;
+
+    // 被动计时
+    const ps = this.pstate;
+    if (ps) {
+      const id = this.def.id;
+      if (id === 'Yasuo') ps.flow = Math.min(100, ps.flow + dt * 2.2);
+      if (id === 'Ziggs') ps.shortFuse = Math.max(0, ps.shortFuse - dt);
+      if (id === 'Jax') { ps.jaxT = Math.max(0, ps.jaxT - dt); if (ps.jaxT <= 0) ps.jaxStacks = 0; }
+      if (ps.ahriWindow > 0) { ps.ahriWindow -= dt; if (ps.ahriWindow <= 0) ps.ahriCharges = 0; }
+      if (ps.shieldCd > 0) ps.shieldCd -= dt;
+    }
 
     // 施法前摇
     if (this.casting) {
@@ -464,6 +486,69 @@ export class Champion extends Unit {
   }
 
   hasHook(h) { return this.augments.some(id => (AUGMENT_BY_ID[id]?.hooks || []).includes(h)); }
+
+  passiveOnHit(target, dmg) {
+    const id = this.def.id, g = this.game;
+    if (id === 'Ashe') g.applyCC(this, target, { type: 'slow', amt: 0.2, dur: 2 });
+    if (id === 'Lux' && target.buffs.some(b => b.id === 'illumination')) {
+      const bonus = 25 + this.level * 8 + this.stats.ap * 0.35;
+      g.damage(this, target, bonus, 'magic', { ability: true });
+      target.buffs = target.buffs.filter(b => b.id !== 'illumination');
+      g.fx('illum', { x: target.x, y: target.y });
+    }
+    if (id === 'Ziggs' && this.pstate.shortFuse <= 0) {
+      const bonus = 20 + this.level * 6 + this.stats.ap * 0.5;
+      g.damage(this, target, bonus, 'magic', { ability: true });
+      this.pstate.shortFuse = 12;
+      g.fx('shortfuse', { x: target.x, y: target.y });
+    }
+    if (id === 'Jax') {
+      this.pstate.jaxStacks = Math.min(8, this.pstate.jaxStacks + 1);
+      this.pstate.jaxT = 2.5;
+      this.recalc();
+    }
+    if (id === 'Sona' && this.pstate.chord) {
+      const bonus = 20 + this.level * 4 + this.stats.ap * 0.2;
+      g.damage(this, target, bonus, 'magic', { ability: true });
+      this.pstate.chord = false;
+      g.fx('chord', { x: target.x, y: target.y });
+    }
+  }
+
+  passiveOnAbilityHit(target) {
+    const id = this.def.id, g = this.game;
+    if (id === 'Lux') target.addBuff({ id: 'illumination', source: this, t: 6 });
+    if (id === 'Ahri') {
+      this.pstate.essence++;
+      if (this.pstate.essence >= 9) {
+        this.pstate.essence = 0;
+        const heal = 30 + this.stats.ap * 0.35;
+        this.hp = Math.min(this.maxHp, this.hp + heal);
+        g.float(this.x, this.y - 50, '+' + Math.round(heal), '#4fe08a', 14);
+      }
+    }
+  }
+
+  passiveOnKill(target) {
+    if (this.def.id !== 'Sion') return;
+    const gain = target.kind === 'champion' ? 15 : target.kind === 'minion' ? (target.mtype === 'cannon' || target.mtype === 'super' ? 15 : 4) : 0;
+    if (gain) { this.pstate.maxHpBonus += gain; this.recalc(); this.hp += gain; }
+  }
+
+  passiveOnCast() {
+    const id = this.def.id;
+    if (id === 'Alistar') {
+      this.pstate.alistarStacks++;
+      if (this.pstate.alistarStacks >= 7) {
+        this.pstate.alistarStacks = 0;
+        const heal = 25 + this.level * 6;
+        this.hp = Math.min(this.maxHp, this.hp + heal);
+        for (const a of this.game.allies(this)) if (dist(a.x, a.y, this.x, this.y) < 600) a.hp = Math.min(a.maxHp, a.hp + heal);
+        this.game.fx('heal', { x: this.x, y: this.y });
+      }
+    }
+    if (id === 'Sona') { this.pstate.casts++; if (this.pstate.casts % 3 === 0) this.pstate.chord = true; }
+  }
 }
 
 /* ---------------- 小兵 ---------------- */
@@ -819,6 +904,7 @@ export class Game {
     const melee = s.range < 240;
     if (melee) {
       this.damage(champ, target, dmg, 'phys', { basic: true, crit });
+      champ.passiveOnHit(target, dmg);
       this.fx('slash', { x: target.x, y: target.y, ang: champ.facing, color: s.ad > 100 ? '#ffd27a' : '#dfeef4' });
       this.audio('hit', target.x, target.y);
     } else {
@@ -831,6 +917,7 @@ export class Game {
       });
       p.onHit = (e) => {
         this.damage(champ, e, p.dmg, 'phys', { basic: true, crit });
+        champ.passiveOnHit(e, p.dmg);
         if (champ.hasHook('execute') && e.hp / e.maxHp < 0.12 && (champ.execCd || 0) <= 0) {
           champ.execCd = 20;
           this.damage(champ, e, 99999, 'true', { silentExec: true });
@@ -938,6 +1025,7 @@ export class Game {
       this.float(target.x + (Math.random() - .5) * 20, target.y - target.r - 16, String(Math.round(dmg)), col, opts.crit ? 18 : 13);
     }
     if (source && source.kind === 'champion' && opts.ability) {
+      source.passiveOnAbilityHit(target);
       const sv = source.stats.spellvamp;
       if (sv > 0) {
         const heal = dmg * sv;
@@ -945,6 +1033,14 @@ export class Game {
         this.float(source.x, source.y - 44, '+' + Math.round(heal), '#4fe08a', 12);
       }
       source.lastAbilityHit = this.time;
+    }
+    if (target.kind === 'champion' && source && source.kind === 'champion' && target.def.id === 'Yasuo' && target.pstate) {
+      const ps = target.pstate;
+      if ((ps.shieldCd || 0) <= 0 && ps.flow > 1) {
+        const sh = target.maxHp * Math.min(1, ps.flow / 100);
+        target.shield += sh; ps.flow = 0; ps.shieldCd = 6;
+        this.float(target.x, target.y - 60, '护盾', '#9fe0ff', 13);
+      }
     }
     if (target.kind === 'champion' && source && source.kind === 'champion' && opts.basic && target.hasHook('thorns')) {
       this.damage(target, source, 25, 'true', { silent: true });
@@ -994,6 +1090,7 @@ export class Game {
         if (this.time < 40 && this.score.blue + this.score.red === 1) this.emit('announce', { text: '第一滴血', big: true });
         if (killer.hasHook('chrono')) killer.ultEmpowered = Math.max(killer.ultEmpowered, 2);
       }
+      if (source && source.kind === 'champion' && source.passiveOnKill) source.passiveOnKill(target);
       this.fx('death', { x: target.x, y: target.y, champ: target });
       this.fx('blood', { x: target.x, y: target.y });
       this.audio('death', target.x, target.y);
@@ -1131,9 +1228,28 @@ export class Game {
   }
 
   cast(champ, slot, aimX, aimY) {
+    // 阿狸 R 二/三段
+    if (champ.def.id === 'Ahri' && slot === 3 && champ.pstate.ahriCharges > 0 && !champ.casting && !champ.dash) {
+      champ.pstate.ahriCharges--;
+      const ab2 = champ.def.abilities[3];
+      const rank2 = champ.abilityRank(3);
+      const aim2 = clampToLane(aimX, aimY);
+      const ang2 = angleTo(champ.x, champ.y, aim2.x, aim2.y);
+      const amount2 = abilityAmount(champ, ab2, rank2, 'dmg');
+      this.dashUnit(champ, champ.x + Math.cos(ang2) * ab2.range, champ.y + Math.sin(ang2) * ab2.range, 0.22, amount2, 'magic', null, ab2.radius || 0);
+      return true;
+    }
     const chk = this.canCast(champ, slot);
     if (!chk.ok) return false;
-    const ab = chk.ab, rank = chk.rank;
+    let ab = chk.ab, rank = chk.rank;
+    // 亚索 Q：第三段击飞
+    if (champ.def.id === 'Yasuo' && slot === 0) {
+      champ.pstate.qStacks++;
+      if (champ.pstate.qStacks >= 3) {
+        champ.pstate.qStacks = 0;
+        ab = { ...ab, width: 130, cc: { type: 'knockup', dur: 0.75 }, color: '#bfe9ff' };
+      }
+    }
     const cost = champ.abilityCost(slot);
     champ.mana -= cost;
     const haste = 1 + (champ.stats.haste || 0) / 100;
@@ -1151,7 +1267,11 @@ export class Game {
 
     this.emit('cast', { champ, slot, ab });
     this.audio('cast', champ.x, champ.y);
-    const castTime = ab.type === 'cone' || ab.type === 'beam' ? 0.18 : 0.12;
+    champ.passiveOnCast();
+    if (champ.def.id === 'Ahri' && slot === 3) { champ.pstate.ahriCharges = 2; champ.pstate.ahriWindow = 10; }
+    if (champ.def.id === 'MonkeyKing' && slot === 1) this.spawnClone(champ);
+    let castTime = ab.castTime || (ab.type === 'cone' || ab.type === 'beam' ? 0.18 : 0.12);
+    if (champ.def.id === 'Sion' && slot === 0) castTime = 0.55;
     champ.casting = { t: castTime, info };
     return true;
   }
@@ -1422,6 +1542,16 @@ export class Game {
       return true;
     }
     return false;
+  }
+
+  spawnClone(owner) {
+    const c = new Minion(this, owner.team, 'melee', 0);
+    c.mtype = 'clone';
+    c.maxHp = 100; c.hp = 100; c.ad = 0; c.ms = 0; c.range = 0; c.ttl = 4;
+    c.x = owner.x; c.y = owner.y; c.laneY = owner.y;
+    c.update = function (dt) { this.ttl -= dt; if (this.ttl <= 0) { this.alive = false; } };
+    this.units.push(c);
+    this.fx('clone', { x: c.x, y: c.y, color: '#c9a6ff' });
   }
 
   /* ---------- 兵线与遗物 ---------- */
