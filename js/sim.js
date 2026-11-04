@@ -155,7 +155,7 @@ export class Champion extends Unit {
     this.hexCore = 0;
     this.lastAbilityHit = 0;
     this.dmgReduceBuff = 0;
-    this.pstate = { flow: 0, shortFuse: 8, jaxStacks: 0, jaxT: 0, casts: 0, essence: 0, chord: false, qStacks: 0, ahriCharges: 0, ahriWindow: 0, alistarStacks: 0, maxHpBonus: 0 };
+    this.pstate = { flow: 0, shortFuse: 8, jaxStacks: 0, jaxT: 0, casts: 0, essence: 0, chord: false, qStacks: 0, ahriCharges: 0, ahriWindow: 0, alistarStacks: 0, maxHpBonus: 0, annieStacks: 0, stunReady: false, vayneStacks: 0, rivenQ: 0 };
     this.recalc();
     this.hp = this.maxHp; this.mana = this.maxMana;
   }
@@ -216,6 +216,7 @@ export class Champion extends Unit {
       if (b.shield) { /* shield handled separately */ }
       if (b.as) s.asPct += b.as;
       if (b.rangeBonus) s.range += b.rangeBonus;
+      if (b.ad) s.ad += b.ad;
       if (b.ms) s.ms += 0;
       if (b.armorBuff) s.armor += b.armorBuff;
       if (b.mrBuff) s.mr += b.mrBuff;
@@ -510,6 +511,14 @@ export class Champion extends Unit {
       this.pstate.jaxStacks = Math.min(8, this.pstate.jaxStacks + 1);
       this.pstate.jaxT = 2.5;
       this.recalc();
+    }
+    if (id === 'Vayne') {
+      this.pstate.vayneStacks = (this.pstate.vayneStacks + 1) % 3;
+      if (this.pstate.vayneStacks === 0) {
+        const t = Math.max(40, this.maxHp * 0.06);
+        g.damage(this, target, t, 'true', { ability: true });
+        g.fx('silverbolt', { x: target.x, y: target.y });
+      }
     }
     if (id === 'Sona' && this.pstate.chord) {
       const bonus = 20 + this.level * 4 + this.stats.ap * 0.2;
@@ -1259,6 +1268,20 @@ export class Game {
     const chk = this.canCast(champ, slot);
     if (!chk.ok) return false;
     let ab = chk.ab, rank = chk.rank;
+    // 安妮被动：第 4 次施法眩晕
+    if (champ.def.id === 'Annie') {
+      champ.pstate.annieStacks++;
+      if (champ.pstate.annieStacks >= 4) { champ.pstate.annieStacks = 0; champ.pstate.stunReady = true; }
+      if (champ.pstate.stunReady && ab.dmg && ab.dmg.length) {
+        ab = { ...ab, cc: { type: 'stun', dur: 1.25 } };
+        champ.pstate.stunReady = false;
+      }
+    }
+    // 锐雯 Q：第三段击飞
+    if (champ.def.id === 'Riven' && slot === 0) {
+      champ.pstate.rivenQ = (champ.pstate.rivenQ + 1) % 3;
+      if (champ.pstate.rivenQ === 0) ab = { ...ab, width: 170, cc: { type: 'knockup', dur: 0.75 } };
+    }
     // 亚索 Q：第三段击飞
     if (champ.def.id === 'Yasuo' && slot === 0) {
       champ.pstate.qStacks++;
@@ -1413,6 +1436,8 @@ export class Game {
           this.fx('knockback', { x: hitTarget.x, y: hitTarget.y });
         }
         this.dashUnit(champ, tx, ty, 0.22, amount, ab.dmgType, ab.cc, ab.radius || 0, ab.knockback || 0);
+        if (ab.shield) champ.shield += abilityAmount(champ, ab, rank, 'shield');
+        if (ab.as) champ.addBuff({ id: 'dashas', source: champ, t: ab.dur || 3, as: ab.as });
         break;
       }
       case 'buff': {
@@ -1443,6 +1468,7 @@ export class Game {
           if (ab.adMult) buff.adMult = (buff.adMult || 0) + ab.adMult;
           if (ab.as) buff.as = (buff.as || 0) + ab.as;
           if (ab.ms) buff.ms = (buff.ms || 0) + ab.ms;
+          if (ab.ad) buff.ad = (buff.ad || 0) + ab.ad;
           if (ab.rangeBonus) buff.rangeBonus = ab.rangeBonus;
           if (ab.stealth) buff.stealth = true;
           if (ab.ccImmune) buff.ccImmune = true;

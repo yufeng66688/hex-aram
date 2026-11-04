@@ -113,7 +113,8 @@ export const RARITY_LABEL = { silver: '银色', gold: '金色', prismatic: '棱�
 import { KITS } from './kits.js';
 import { KITS2 } from './kits2.js';
 import { KITS3 } from './kits3.js';
-const KIT_ALL = [...KITS, ...KITS2, ...KITS3];
+import { KITS4 } from './kits4.js';
+const KIT_ALL = [...KITS, ...KITS2, ...KITS3, ...KITS4];
 
 const ROLE_CN = { Marksman: '射手', Mage: '法师', Tank: '坦克', Fighter: '战士', Assassin: '刺客', Support: '辅助' };
 const PALETTE = {
