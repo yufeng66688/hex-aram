@@ -215,6 +215,7 @@ export class Champion extends Unit {
     for (const b of this.buffs) {
       if (b.shield) { /* shield handled separately */ }
       if (b.as) s.asPct += b.as;
+      if (b.rangeBonus) s.range += b.rangeBonus;
       if (b.ms) s.ms += 0;
       if (b.armorBuff) s.armor += b.armorBuff;
       if (b.mrBuff) s.mr += b.mrBuff;
@@ -689,7 +690,7 @@ export class Projectile {
       hit: new Set(), cc: null, color: '#9fe0ff', kind: 'skillshot',
       target: null, speed: 900, onHit: null, onEnd: null,
       slowResist: false, source: null, width: 20, explode: 0, visual: 'orb',
-      returning: false, returnPhase: false, dead: false, homing: false, return3: false, pull: 0,
+      returning: false, returnPhase: false, dead: false, homing: false, return3: false, pull: 0, executeBelow: 0,
       trail: [], crit: false, ability: true,
     }, o);
     this.startX = this.x; this.startY = this.y;
@@ -762,6 +763,9 @@ export class Projectile {
     }
     if (this.onHit) this.onHit(e, this);
     if (this.dmg > 0) g.damage(this.source || this.owner, e, this.dmg, this.dmgType, { ability: this.ability, crit: this.crit });
+    if (this.executeBelow && e.hp / e.maxHp <= this.executeBelow) {
+      g.damage(this.source || this.owner, e, e.maxHp * 0.2, 'true', { ability: true });
+    }
     if (this.cc) g.applyCC(this.source || this.owner, e, this.cc);
     if (this.explode) g.aoeDamage(this.owner, this.x, this.y, this.explode, this.dmg * 0.6, this.dmgType, { ability: true, fx: this.color });
     g.fx('hit', { x: this.x, y: this.y, color: this.color });
@@ -909,6 +913,7 @@ export class Game {
         this.damage(champ, target, champ.empower.dmg, 'magic', { ability: false });
         dmg -= champ.empower.dmg;
       }
+      if (champ.empower.cc) this.applyCC(champ, target, champ.empower.cc);
       champ.empower = null;
     }
     const melee = s.range < 240;
@@ -1322,7 +1327,7 @@ export class Game {
           dmg: amount, dmgType: ab.dmgType || 'magic', range: ab.range || 900,
           pierce: ab.pierce === true ? 99 : (ab.pierce || 0), cc: ab.cc, color,
           explode: ab.explode || 0, visual: 'orb', ability: true, crit: false,
-          return3: !!ab.return3, pull: ab.pull || 0,
+          return3: !!ab.return3, pull: ab.pull || 0, executeBelow: ab.executeBelow || 0,
         });
         this.projectiles.push(p);
         this.fx('castline', { x: champ.x, y: champ.y, ang, color, len: 600 });
@@ -1378,6 +1383,15 @@ export class Game {
           if (ab.airborneBonus && (best.hasBuff('knockup') || best.hasBuff('stun'))) dmg2 *= 1 + ab.airborneBonus;
           this.damage(champ, best, dmg2, ab.dmgType || 'phys', { ability: true });
           if (ab.cc) this.applyCC(champ, best, ab.cc);
+          if (ab.pull) {
+            const a2 = angleTo(champ.x, champ.y, best.x, best.y);
+            const p2 = clampToLane(champ.x + Math.cos(a2) * ab.pull, champ.y + Math.sin(a2) * ab.pull);
+            best.x = p2.x; best.y = p2.y;
+          }
+          if (ab.executeBelow && best.hp / best.maxHp <= ab.executeBelow) {
+            this.damage(champ, best, best.maxHp * 0.2, 'true', { ability: true });
+            this.fx('execute', { x: best.x, y: best.y });
+          }
           champ.x = best.x - Math.cos(angleTo(best.x, best.y, champ.x, champ.y)) * 60;
           champ.y = best.y - Math.sin(angleTo(best.x, best.y, champ.x, champ.y)) * 60;
           this.fx('slash', { x: best.x, y: best.y, ang: 0, color });
@@ -1429,6 +1443,7 @@ export class Game {
           if (ab.adMult) buff.adMult = (buff.adMult || 0) + ab.adMult;
           if (ab.as) buff.as = (buff.as || 0) + ab.as;
           if (ab.ms) buff.ms = (buff.ms || 0) + ab.ms;
+          if (ab.rangeBonus) buff.rangeBonus = ab.rangeBonus;
           if (ab.stealth) buff.stealth = true;
           if (ab.ccImmune) buff.ccImmune = true;
           if (buff.t) t.addBuff({ id: 'buff_' + ab.name, label: ab.name, source: champ, ...buff });
@@ -1485,7 +1500,7 @@ export class Game {
       case 'empower': {
         champ.empower = {
           dmg: amount, dmgType: ab.dmgType || 'phys', shred: ab.shred, dur: ab.dur || 5,
-          color, empower: true,
+          color, empower: true, cc: ab.cc || null,
         };
         this.fx('buff', { x: champ.x, y: champ.y, color });
         break;
